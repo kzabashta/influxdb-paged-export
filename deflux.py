@@ -47,17 +47,27 @@ def extract_data(host, port, user, password, dbname, measurement, pagesize, outd
 
     # initialize the CLI
     init(outdir)
+    total_pages = get_total_pages(client, measurement)
+    with click.progressbar(length=total_pages,
+                       label='Exporting data') as bar:
+        while True:
+            query = QUERY_TEMPLATE % (measurement, pagesize, offset)
+            result = list(client.query(query).get_points())
+            save_page(result, offset, outdir)
+            if len(result) == 0:
+                break
+            bar.update(pagesize)
+            offset += pagesize
 
-    while True:
-        query = QUERY_TEMPLATE % (measurement, pagesize, offset)
-        result = list(client.query(query).get_points())
-        save_page(result, offset, outdir)
-        if len(result) == 0:
-            break
-        offset += pagesize
+def get_total_pages(client, measurement):
+    query = 'select count(*) from %s' % measurement
+    result = client.query(query)
+    # HUGE assumption here. The result returns counts per key.
+    # We assume that there is at least one key in the measurement
+    # and that the counts for each key is the same.
+    return list(result.get_points())[0].itervalues().next()
 
 def save_page(points, offset, outdir):
-    click.echo('saving at offset %i' % offset)
     with open(os.path.join(outdir, '%i.json' % offset), 'w') as f:
         json.dump(points, f)
 
